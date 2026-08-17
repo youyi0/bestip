@@ -1,9 +1,9 @@
-name: Update Best IP Daily
+name: '更新 IP'
 
 on:
   schedule:
     # 每天 UTC 时间 2:00 (北京时间早上 10:00) 自动运行
-    - cron: '0 0 * * *'
+    - cron: '0 2 * * *'
   # 支持在 GitHub 页面手动触发执行
   workflow_dispatch:
 
