@@ -1,0 +1,35 @@
+name: Update Best IP Daily
+
+on:
+  schedule:
+    # 每天 UTC 时间 0:00 (北京时间早上 8:00) 自动运行
+    - cron: '0 0 * * *'
+  # 支持在 GitHub 页面手动触发执行
+  workflow_dispatch:
+
+jobs:
+  update-ip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Fetch and Append Best IPs
+        run: |
+          # 依次拉取 US、JP、TW 区域的数据并追加到 my-bestip.txt 末尾
+          curl -s https://bestcf.pages.dev/random-region/US/50.txt >> my-bestip.txt
+          echo "" >> my-bestip.txt
+          curl -s https://bestcf.pages.dev/random-region/JP/50.txt >> my-bestip.txt
+          echo "" >> my-bestip.txt
+          curl -s https://bestcf.pages.dev/random-region/TW/50.txt >> my-bestip.txt
+          
+          # 去除多余空行
+          sed -i '/^$/d' my-bestip.txt
+
+      - name: Force Commit and Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add my-bestip.txt
+          git commit -m "auto: append best ips to my-bestip.txt" || true
+          git push
