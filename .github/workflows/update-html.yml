@@ -1,10 +1,10 @@
-name: '自动更新html优选 IP'
+name: 自动更新html优选 IP
 
 on:
   schedule:
-    # 每 6 小时自动运行一次
+    # 每 6 小时自动定时触发
     - cron: '0 */6 * * *'
-  workflow_dispatch: # 支持手动触发
+  workflow_dispatch: # 支持手动点按钮触发
 
 jobs:
   fetch-ip:
@@ -25,5 +25,5 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add 优选IP.txt
-          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: 更新优选IP.txt" && git push)
+          git add -A
+          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: 自动追加更新 优选IP.txt" && git push)
