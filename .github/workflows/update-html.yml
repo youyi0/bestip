@@ -1,4 +1,4 @@
-name: 自动更新优选 IP
+name: 更新html优选 IP
 
 on:
   schedule:
