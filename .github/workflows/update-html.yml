@@ -15,10 +15,10 @@ jobs:
       - name: 设置 Node.js 环境
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: 安装解析依赖包
-        run: npm install axios cheerio
+        run: npm install cheerio
 
       - name: 运行解析脚本
         run: node extract.js
