@@ -1,94 +1,118 @@
 const fs = require('fs');
 const path = require('path');
 
-const URLS = [
-  'https://www.wetest.vip/page/cloudflare/address_v4.html',
-  'https://www.wetest.vip/page/cloudflare/address_v6.html'
+const urls = [
+    'https://www.wetest.vip/page/cloudflare/address_v4.html',
+    'https://www.wetest.vip/page/cloudflare/address_v6.html'
 ];
 
-const OUTPUT_FILE = path.join(__dirname, '优选IP.txt');
+const outputFile = path.join(__dirname, '优选IP.txt');
 
-// 1. 初始化，确保文件必然存在（防止后续 git add 报错）
-if (!fs.existsSync(OUTPUT_FILE)) {
-  fs.writeFileSync(OUTPUT_FILE, '', 'utf-8');
+// 确保输出文件存在
+if (!fs.existsSync(outputFile)) {
+    fs.writeFileSync(outputFile, '', 'utf8');
 }
 
-// 2. 正则解析 HTML 中的表格，提取 IP、端口、线路和运营商
-function parseHTML(html) {
-  const results = [];
-  const rowRegex = /<tr>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>/gi;
-  let match;
+// 简单的 DOM 表格解析器（替换 cheerio，无需 npm i）
+function parseTableHTML(html) {
+    const list = [];
+    const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let trMatch;
 
-  while ((match = rowRegex.exec(html)) !== null) {
-    let ip = match[1].replace(/<[^>]+>/g, '').trim();
-    let port = match[2].replace(/<[^>]+>/g, '').trim() || '443';
-    let line = match[3].replace(/<[^>]+>/g, '').trim(); // 线路/机房
-    let isp = match[4].replace(/<[^>]+>/g, '').trim();  // 运营商（移动/联通/电信）
+    while ((trMatch = trRegex.exec(html)) !== null) {
+        const tdRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+        const cells = [];
+        let tdMatch;
 
-    if (ip) {
-      // 如果是 IPv6 且未包含中括号，自动包裹 []
-      if (ip.includes(':') && !ip.startsWith('[')) {
-        ip = `[${ip}]`;
-      }
-      results.push({
-        key: `${ip}:${port}`, // 去重用的唯一标志
-        lineStr: `${ip}:${port}#${isp}-${line}`
-      });
+        while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
+            const text = tdMatch[1].replace(/<[^>]+>/g, '').trim();
+            cells.push(text);
+        }
+
+        // 提取 [IP, 端口, 线路, 运营商]
+        if (cells.length >= 4) {
+            let ip = cells[0];
+            let port = cells[1] || '443';
+            let line = cells[2] || '';
+            let isp = cells[3] || '';
+
+            // 过滤表头，仅匹配合法 IP
+            const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
+            const isIPv6 = ip.includes(':') && /[a-fA-F0-9]/.test(ip);
+
+            if (isIPv4 || isIPv6) {
+                if (isIPv6 && !ip.startsWith('[')) {
+                    ip = `[${ip}]`;
+                }
+                list.push({
+                    key: `${ip}:${port}`,
+                    formatted: `${ip}:${port}#${isp}-${line}`
+                });
+            }
+        }
     }
-  }
-  return results;
+    return list;
 }
 
-async function main() {
-  // 3. 读取现有文件中的记录建立 Set 去重
-  const existingKeys = new Set();
-  const fileContent = fs.readFileSync(OUTPUT_FILE, 'utf-8');
-  fileContent.split(/\r?\n/).forEach(line => {
-    const trimmed = line.trim();
-    if (trimmed) {
-      const key = trimmed.split('#')[0];
-      existingKeys.add(key);
-    }
-  });
-
-  const newEntries = [];
-
-  // 4. 遍历抓取两个网页
-  for (const url of URLS) {
+async function runWorkflow() {
     try {
-      console.log(`正在抓取: ${url}`);
-      const res = await fetch(url, {
-        headers: { 
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
-        }
-      });
-      if (!res.ok) {
-        console.error(`请求响应错误: ${res.status}`);
-        continue;
-      }
-      
-      const html = await res.text();
-      const parsed = parseHTML(html);
+        console.log("工作流开始运行...");
 
-      parsed.forEach(item => {
-        if (!existingKeys.has(item.key)) {
-          existingKeys.add(item.key);
-          newEntries.push(item.lineStr);
+        // 读取已存在的 IP 列表（根据 ip:port 进行去重）
+        const existingKeys = new Set();
+        if (fs.existsSync(outputFile)) {
+            const content = fs.readFileSync(outputFile, 'utf8');
+            const lines = content.split('\n');
+            for (let line of lines) {
+                line = line.trim();
+                if (line) {
+                    const key = line.split('#')[0];
+                    existingKeys.add(key);
+                }
+            }
         }
-      });
-    } catch (err) {
-      console.error(`抓取失败 [${url}]:`, err.message);
+
+        const newEntries = [];
+
+        // 抓取并解析数据
+        for (const url of urls) {
+            console.log(`Fetching: ${url}`);
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            });
+
+            if (!response.ok) {
+                console.error(`请求失败: ${response.status}`);
+                continue;
+            }
+
+            const html = await response.text();
+            const items = parseTableHTML(html);
+
+            for (const item of items) {
+                if (!existingKeys.has(item.key)) {
+                    existingKeys.add(item.key);
+                    newEntries.push(item.formatted);
+                }
+            }
+        }
+
+        // 追加到 优选IP.txt
+        if (newEntries.length > 0) {
+            const fileData = fs.readFileSync(outputFile, 'utf8').trim();
+            const prefix = fileData.length > 0 ? '\n' : '';
+            fs.appendFileSync(outputFile, prefix + newEntries.join('\n'), 'utf8');
+            console.log(`成功追加 ${newEntries.length} 条全新 IP！`);
+        } else {
+            console.log("未发现新的未重复 IP 地址。");
+        }
+
+    } catch (error) {
+        console.error("运行出错:", error);
     }
-  }
-
-  // 5. 追加写入新节点数据
-  if (newEntries.length > 0) {
-    const prefix = fs.readFileSync(OUTPUT_FILE, 'utf-8').trim().length > 0 ? '\n' : '';
-    fs.appendFileSync(OUTPUT_FILE, prefix + newEntries.join('\n'), 'utf-8');
-    console.log(`成功追加 ${newEntries.length} 条全新 IP 数据！`);
-  } else {
-    console.log('未发现新的未重复 IP 地址。');
-  }
 }
 
-main();
+// 执行主程序
+runWorkflow();
