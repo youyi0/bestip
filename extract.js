@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
 const cheerio = require('cheerio');
 
 const URLS = [
@@ -36,17 +35,21 @@ async function runWorkflow() {
     try {
       console.log(`正在请求页面: ${url}`);
       
-      // 模拟标准浏览器请求头
-      const response = await axios.get(url, {
+      const response = await fetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
-        },
-        timeout: 10000
+        }
       });
 
-      const $ = cheerio.load(response.data);
+      if (!response.ok) {
+        console.error(`请求失败 [${url}], 状态码: ${response.status}`);
+        continue;
+      }
+
+      const htmlText = await response.text();
+      const $ = cheerio.load(htmlText);
       const rows = $('table tbody tr');
 
       console.log(`在 ${url} 中查找到 ${rows.length} 行表格记录`);
@@ -54,13 +57,13 @@ async function runWorkflow() {
       rows.each((index, element) => {
         const tds = $(element).find('td');
         if (tds.length >= 6) {
-          const isp = $(tds[0]).text().trim() || '通用';          // 第1列：线路名称 (如 移动/联通/电信)
+          const isp = $(tds[0]).text().trim() || '通用';          // 第1列：线路名称 (移动/联通/电信)
           let ip = $(tds[1]).text().trim();                    // 第2列：优选地址 (IP)
-          const line = $(tds[5]).text().trim() || '未知';      // 第6列：数据中心 (如 HKG/LAX)
+          const line = $(tds[5]).text().trim() || '未知';      // 第6列：数据中心 (HKG/LAX等)
           const port = '443';                                  // 默认端口
 
           if (ip) {
-            // IPv6 加上 []
+            // IPv6 自动补全 []
             if (ip.includes(':') && !ip.startsWith('[')) {
               ip = `[${ip}]`;
             }
